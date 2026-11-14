@@ -15,6 +15,7 @@ Agents keep long-term memory, and that memory decides what they do. A product re
 | 1. Retcon off | A malicious review overwrote `refund_method` | Refund sent to **9988-1122-3344** (attacker) |
 | 2. Retcon on | The same review is **quarantined** (rule `source_policy`); the review source's trust drops to 20 | Memory never changes |
 | 3. Rollback | `refund_method` restored: attacker account → "card ending 4242" | Refund sent to **card ending 4242** |
+| 4. Forget | Customer says "Please forget my delivery preference." | Agent calls `forget_memory("delivery")`; memory deleted, audit record kept |
 
 The only thing that changes between runs is memory, so the tool call proves memory changed the agent's behavior, not just the prompt.
 
@@ -23,7 +24,7 @@ The only thing that changes between runs is memory, so the tool call proves memo
 | Statement 2 question | Retcon |
 |---|---|
 | How do you keep one client's memory from leaking into another's? | Per-user namespaces plus a `readable_by` rule on every memory, enforced on every read |
-| How does the agent fix or drop a wrong or expired memory? | Quarantine, release, one-click rollback with diff, TTL via `put(ttl=...)` |
+| How does the agent fix or drop a wrong or expired memory? | Quarantine, release, one-click rollback with diff, "forget this" on request (audited), TTL via `put(ttl=...)` |
 | How do you prove memory changed behavior? | The three-act demo above: one prompt, three different `issue_refund` calls |
 
 ## Architecture

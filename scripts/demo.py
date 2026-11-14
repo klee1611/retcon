@@ -101,6 +101,17 @@ def main() -> None:
     results.append(("Act 3  After rollback", refund_account(r3)))
     print(f"  user: {PROMPT}\n  agent refund -> {refund_account(r3)}")
 
+    banner("Act 4 - The customer asks the agent to forget something")
+    forget_prompt = "Please forget my delivery preference."
+    r4 = run_turn(store_on, USER, forget_prompt, run_label="act4_forget")
+    forgot = [c for c in r4["tool_calls"] if c["name"] == "forget_memory"]
+    gone = store_on.get((USER, "preferences"), "delivery") is None
+    audit = db["memory_history"].find_one({"op": "forget", "key": "delivery"})
+    print(f"  user: {forget_prompt}")
+    print(f"  agent tool call: {forgot[0]['args'] if forgot else 'none'}")
+    print(f"  memory gone: {gone}   audit record kept: {audit is not None}")
+    results.append(("Act 4  Forget request", "FORGOTTEN (audited)" if gone and audit else "NOT FORGOTTEN"))
+
     banner("Summary: same prompt, different memory, different action")
     for label, outcome in results:
         flag = "  <-- attacker" if ATTACKER in outcome else ""

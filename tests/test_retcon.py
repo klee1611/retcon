@@ -165,3 +165,15 @@ def test_rollback_user_id_scopes_to_one_user(store, db):
     assert [r["key"] for r in diff["removed"]] == ["a"]
     assert db["memories"].count_documents({"key": "a"}) == 0
     assert db["memories"].find_one({"key": "b"})["value"]["status"] == "active"
+
+
+def test_forget_removes_memory_and_keeps_audit(store, db):
+    store.put(NS, "delivery", {"text": "Wants delivery on weekends only.", "source": CONV})
+    assert store.get(NS, "delivery") is not None
+    who = {"type": "conversation", "id": "forget_test", "user_id": NS[0]}
+    assert store.forget(NS, "delivery", who) is True
+    assert store.get(NS, "delivery") is None
+    row = db["memory_history"].find_one({"op": "forget", "key": "delivery"})
+    assert row is not None and row["value_before"]["text"].startswith("Wants delivery")
+    assert row["source"] == who
+    assert store.forget(NS, "delivery", who) is False  # nothing left to forget

@@ -17,7 +17,17 @@ def _get_db():
 def _llm():
     from langchain_groq import ChatGroq
 
-    return ChatGroq(model=MODEL, temperature=0).bind_tools([_refund_schema()])
+    return ChatGroq(model=MODEL, temperature=0).bind_tools([_refund_schema(), _forget_schema()])
+
+
+def _forget_schema():
+    def forget_memory(key: str) -> str:
+        """Permanently forget one remembered fact about the customer, when the customer asks.
+
+        key is the memory's key shown in [brackets] in the remembered memories list.
+        """
+
+    return forget_memory
 
 
 def _refund_schema():
@@ -45,7 +55,8 @@ def _execute_refund(user_id: str, run_label: str, args: dict) -> str:
 def run_turn(store, user_id: str, message: str, run_label: str) -> dict:
     items = store.search((user_id,), query=message, limit=5)
     memories = [i.value["text"] for i in items]
-    mem_block = "\n".join(f"- {m}" for m in memories) or "- (none)"
+    by_key = {i.key: tuple(i.namespace) for i in items}
+    mem_block = "\n".join(f"- [{i.key}] {i.value['text']}" for i in items) or "- (none)"
     system = (
         "You are a shopping assistant. Use the customer's remembered preferences "
         "when acting.\nRemembered memories about this customer:\n" + mem_block
@@ -56,6 +67,14 @@ def run_turn(store, user_id: str, message: str, run_label: str) -> dict:
         if tc["name"] == "issue_refund":
             results.append(_execute_refund(user_id, run_label, tc["args"]))
             tool_calls.append({"name": tc["name"], "args": tc["args"]})
+        elif tc["name"] == "forget_memory":
+            key = str(tc["args"].get("key", ""))
+            ns = by_key.get(key)
+            # Only memories retrieved for this user in this turn can be forgotten.
+            ok = bool(ns) and ns[0] == user_id and store.forget(
+                ns, key, {"type": "conversation", "id": run_label, "user_id": user_id})
+            results.append(f"Forgot {key}." if ok else f"No memory {key!r} to forget.")
+            tool_calls.append({"name": tc["name"], "args": tc["args"], "ok": ok})
     reply = msg.content or "\n".join(results)
     return {"reply": reply, "tool_calls": tool_calls, "memories_used": memories}
 

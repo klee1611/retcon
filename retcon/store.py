@@ -202,6 +202,19 @@ class RetconStore(MongoDBStore):
         # MongoDBStore.delete bypasses batch, so route it through ours.
         self.batch([PutOp(namespace=namespace, key=key, value=None)])
 
+    def forget(self, namespace, key, source: dict) -> bool:
+        """Delete a memory on request and keep an audit record of who asked.
+
+        Returns False if there was nothing to forget. Only the memory's own
+        namespace owner should call this (enforced by the agent's tool).
+        """
+        before = self._current(namespace, key)
+        if before is None:
+            return False
+        super().batch([PutOp(namespace=namespace, key=key, value=None)])
+        self._history(namespace, key, "forget", before, None, source)
+        return True
+
     def raw_batch(self, ops):
         """Underlying MongoDBStore write with no checks or history (used by rollback)."""
         return super().batch(ops)

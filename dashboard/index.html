@@ -56,7 +56,7 @@ function addHistoryRow(h,at){
   const el=document.createElement("div");
   el.className="ev "+(rb?"rb":"s");
   el.innerHTML=`<div class="meta">${fmt(at)} &middot; ${esc((h.namespace||[]).join("/"))} / ${esc(h.key)}
-   <span class="badge b-rb">${rb?"ROLLED BACK":"RELEASED"}</span></div>
+   <span class="badge b-rb">${rb?"ROLLED BACK":h.op==="forget"?"FORGOTTEN":"RELEASED"}</span></div>
    <div>${txt(h.value_before)} &rarr; ${txt(h.value_after)}</div>`;
   $("timeline").prepend(el);
 }
@@ -119,7 +119,7 @@ function handle(ev){
   }else if(c==="sources"){sources[doc._id]={...sources[doc._id],...doc};renderSources();}
   else if(c==="refunds"&&op==="insert"){refunds.unshift(doc);renderRefunds();}
   else if(c==="memory_history"&&doc.at){
-    if(op==="insert"&&(doc.op==="rollback"||doc.op==="release"))addHistoryRow(doc,at||doc.at);
+    if(op==="insert"&&(doc.op==="rollback"||doc.op==="release"||doc.op==="forget"))addHistoryRow(doc,at||doc.at);
     histTimes.unshift(doc.at);renderHist();}
 }
 async function init(){
@@ -131,7 +131,7 @@ async function init(){
   renderSources();renderQuarantine();renderRefunds();renderHist();
   s.history.slice().reverse().forEach(h=>{
     if(h.op==="delete")return;
-    if(h.op==="rollback"||h.op==="release")return addHistoryRow(h,h.at);
+    if(h.op==="rollback"||h.op==="release"||h.op==="forget")return addHistoryRow(h,h.at);
     addTimeline("s",{namespace:h.namespace,key:h.key,value:h.value_after,source:h.source},h.at);
   });
   s.quarantine.slice().reverse().forEach(d=>addTimeline("q",d,d.created_at));
