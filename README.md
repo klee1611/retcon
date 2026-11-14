@@ -74,14 +74,19 @@ Requires Python 3.13, [uv](https://docs.astral.sh/uv/), a MongoDB Atlas cluster,
 cp .env.example .env            # fill in MONGODB_URI and GROQ_API_KEY
 uv sync
 
-# Terminal 1: live dashboard at http://localhost:8000
-uv run uvicorn dashboard.app:app --port 8000
+# Live demo: starts the dashboard, opens it in your browser, then steps through
+# the demo (press Enter between acts)
+uv run python scripts/live_demo.py
+```
 
-# Terminal 2: the demo (add --pause to step through it act by act)
-uv run python scripts/demo.py
+The dashboard is a web page served by the app at http://localhost:8000. It shows the memory timeline, quarantine, trust scores, and refunds, and updates live as the demo runs.
 
-# Tests (run against the retcon_test database, about 3 minutes)
-uv run pytest -q tests
+Other commands:
+
+```bash
+uv run uvicorn dashboard.app:app --port 8000   # dashboard only
+uv run python scripts/demo.py                  # demo only, no pauses
+uv run pytest -q tests                         # tests (retcon_test database, about 3 minutes)
 ```
 
 The first demo run builds the vector indexes (about 1 to 2 minutes). Later runs take about 15 seconds.
@@ -103,8 +108,11 @@ retcon/store.py      RetconStore: checks, quarantine, trust, history, read rules
 retcon/rollback.py   snapshot and rollback with diff
 retcon/agent.py      Groq shopping agent with issue_refund and forget_memory tools
 retcon/db.py         Atlas setup, attack-pattern seeding, store factory
-dashboard/           FastAPI + SSE live dashboard (single HTML file)
-scripts/demo.py      the demo: without Retcon, with Retcon, rollback, forget
+dashboard/app.py     FastAPI backend: serves the page, live updates (SSE), rollback and quarantine actions
+dashboard/index.html the dashboard web page (HTML + JavaScript, no build step)
+scripts/live_demo.py one-command live demo: dashboard + browser + demo
+scripts/demo.py      the demo itself: without Retcon, with Retcon, rollback, forget
+data/                demo data: customer preferences and the malicious review
 tests/               tests against live Atlas
 assets/              architecture diagram and dashboard screenshot
 ```
