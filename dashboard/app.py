@@ -14,7 +14,7 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 
 load_dotenv()
 
-COLLECTIONS = ["memories", "quarantine", "sources", "refunds", "memory_history"]
+COLLECTIONS = ["memories", "quarantine", "sources", "refunds", "memory_history", "demo_runs"]
 app = FastAPI(title="Retcon dashboard")
 # Local-only dashboard: reject other Host headers so a malicious site can't read
 # memory contents through DNS rebinding.

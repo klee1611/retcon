@@ -1,5 +1,6 @@
 """Atlas connection, collection setup, attack-pattern seeding, store factory."""
 import os
+from datetime import datetime, timezone
 from functools import lru_cache
 
 from dotenv import load_dotenv
@@ -74,6 +75,8 @@ def clear_data(db: Database) -> None:
     """Delete demo documents but keep collections and their vector indexes (fast re-runs)."""
     for name in DATA_COLLECTIONS:
         db[name].delete_many({})
+    # Tells any open dashboard to reset its screen for the new run.
+    db["demo_runs"].insert_one({"started_at": datetime.now(timezone.utc)})
 
 
 def make_store(db: Database, *, enabled: bool = True, user_id: str | None = "user_42"):

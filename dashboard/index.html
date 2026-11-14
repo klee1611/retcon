@@ -69,6 +69,14 @@ function addRemoved(doc,at){
   $("timeline").prepend(el);
 }
 function clearTimeline(){$("timeline").innerHTML="";$("diff").innerHTML="";}
+// A new demo run cleared the database: wipe every panel, not just the timeline.
+function resetAll(){
+  clearTimeline();
+  for(const k in sources)delete sources[k];
+  for(const k in quarantine)delete quarantine[k];
+  refunds.length=0; histTimes.length=0;
+  renderSources();renderQuarantine();renderRefunds();renderHist();
+}
 function renderQuarantine(){
   const items=Object.values(quarantine).filter(d=>d.status==="held");
   $("quarantine").innerHTML=items.map(d=>{
@@ -110,14 +118,21 @@ function handle(ev){
   const {collection:c,op,doc,at}=ev;
   if(c==="_error"){$("live").textContent="ERROR: "+((doc&&doc.error)||"watcher stopped")+" (retrying)";$("live").className="err";
     es&&es.close();setTimeout(connect,3000);return;}
+  if(c==="demo_runs"){if(op==="insert")resetAll();return;}
   if(c==="memories"&&op==="delete")addRemoved(doc,at);
   else if(c==="memories"&&doc.value)addTimeline("s",doc,at);
   else if(c==="quarantine"){
     if(op==="insert")addTimeline("q",doc,at);
     if(op==="delete")delete quarantine[doc._id]; else quarantine[doc._id]=doc;
     renderQuarantine();
-  }else if(c==="sources"){sources[doc._id]={...sources[doc._id],...doc};renderSources();}
-  else if(c==="refunds"&&op==="insert"){refunds.unshift(doc);renderRefunds();}
+  }else if(c==="sources"){
+    if(op==="delete")delete sources[doc._id]; else sources[doc._id]={...sources[doc._id],...doc};
+    renderSources();
+  }else if(c==="refunds"){
+    if(op==="insert")refunds.unshift(doc);
+    else if(op==="delete"){const i=refunds.findIndex(r=>r._id===doc._id);if(i>=0)refunds.splice(i,1);}
+    renderRefunds();
+  }
   else if(c==="memory_history"&&doc.at){
     if(op==="insert"&&(doc.op==="rollback"||doc.op==="release"||doc.op==="forget"))addHistoryRow(doc,at||doc.at);
     histTimes.unshift(doc.at);renderHist();}
