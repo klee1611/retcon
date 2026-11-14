@@ -1,0 +1,15 @@
+# Planning docs stay local (per request)
+docs/
+
+# Secrets
+.env
+
+# Python
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# Tooling
+.pytest_cache/
+.DS_Store
