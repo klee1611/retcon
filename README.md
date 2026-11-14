@@ -29,30 +29,9 @@ The only thing that changes between runs is memory, so the tool call proves memo
 
 ## Architecture
 
-```
-Shopping agent (Groq openai/gpt-oss-120b, temperature 0)
-   │ tool: issue_refund(order_id, account)
-   │ memory: semantic search + put
-   ▼
-RetconStore  (subclass of langgraph-store-mongodb's MongoDBStore)
-   ├─ every write goes through batch(): sync, async, put, delete
-   ├─ source policy: untrusted sources can't write preferences or instructions
-   ├─ attack patterns: Atlas Vector Search against known injection phrasings
-   ├─ per-source and per-type trust that tightens and relaxes automatically
-   ├─ fail closed: a check error or timeout quarantines the memory
-   └─ reads filtered: active memories the requester may read
-   ▼
-MongoDB Atlas
-   ├─ memories          LangGraph long-term memory, Automated Embeddings (voyage-4)
-   ├─ quarantine        blocked writes with rule and reason
-   ├─ memory_history    every change, for audit and rollback
-   ├─ sources           trust scores
-   ├─ attack_patterns   known injections, Automated Embeddings index
-   └─ refunds           the agent's actions
-   │ Change Streams
-   ▼
-Dashboard (FastAPI + Server-Sent Events): live timeline, quarantine, trust, refunds, rollback
-```
+![Retcon architecture: inputs flow through the shopping agent into RetconStore, which writes allowed memories to MongoDB Atlas, quarantines blocked ones, and records history; the dashboard follows Change Streams and triggers rollback](assets/architecture.png)
+
+Every memory write goes through `RetconStore`, a subclass of LangGraph's `MongoDBStore`. Allowed writes land in `memories`, blocked ones in `quarantine`, and every change in `memory_history`, which powers rollback. Diagram source: [`assets/architecture.mmd`](assets/architecture.mmd).
 
 ### MongoDB features doing real work
 
