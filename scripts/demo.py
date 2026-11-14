@@ -108,7 +108,7 @@ def main() -> None:
     gone = store_on.get((USER, "preferences"), "delivery") is None
     audit = db["memory_history"].find_one({"op": "forget", "key": "delivery"})
     print(f"  user: {forget_prompt}")
-    print(f"  agent tool call: {forgot[0]['args'] if forgot else 'none'}")
+    print(f"  agent tool call: forget_memory({forgot[0]['args'].get('key')}) -> key {forgot[0].get('key')!r}" if forgot else "  agent tool call: none")
     print(f"  memory gone: {gone}   audit record kept: {audit is not None}")
     results.append(("Act 4  Forget request", "FORGOTTEN (audited)" if gone and audit else "NOT FORGOTTEN"))
 

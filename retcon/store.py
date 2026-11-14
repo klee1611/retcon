@@ -22,6 +22,8 @@ _INSTRUCTION_RE = re.compile(
 )
 _ACCOUNT_RE = re.compile(r"\b\d{4}[-\s]\d{4}[-\s]\d{4}\b|\b\d{9,}\b")
 UNKNOWN_SOURCE = {"type": "unknown", "id": "unknown"}
+# Keys may come from untrusted input (e.g. a review id), so keep them inert.
+_KEY_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 _pool = ThreadPoolExecutor(max_workers=4)
 
 
@@ -117,6 +119,9 @@ class RetconStore(MongoDBStore):
                 return Decision(False, "invalid_input",
                                 "namespace must be non-empty, source a dict, "
                                 "and value must have a string 'text'")
+            if not isinstance(key, str) or not _KEY_RE.match(key):
+                return Decision(False, "invalid_input",
+                                "key must match [A-Za-z0-9_-]{1,64}")
             return _pool.submit(self._check, tuple(namespace), key, value).result(
                 timeout=CHECK_TIMEOUT)
         except BaseException as e:  # timeout or any error -> fail closed
