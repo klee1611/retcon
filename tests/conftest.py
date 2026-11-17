@@ -24,3 +24,11 @@ def store(db):
     for name in DATA:
         db[name].delete_many({})
     return make_store(db, session_id=SID, enabled=True)
+
+
+@pytest.fixture
+def sdb(db):
+    """The test database with every per-session collection cleared (sessions, actions...)."""
+    for name in DATA:
+        db[name].delete_many({})
+    return db

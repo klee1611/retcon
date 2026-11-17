@@ -174,7 +174,7 @@ class RetconStore(MongoDBStore):
             "session_id": self._sid(namespace),
             "namespace": list(namespace), "key": key, "op": op,
             "value_before": before, "value_after": after,
-            "source": source, "at": _now(),
+            "source": source, "retcon_enabled": bool(self.enabled), "at": _now(),
         }).inserted_id
 
     def _update_source(self, source: dict, blocked: bool) -> None:

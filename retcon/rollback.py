@@ -66,6 +66,7 @@ def rollback_to_event(db, store, history_id, session_id: str, *, preview: bool =
     db["memory_history"].insert_many([  # only after the restore write succeeded
         {"session_id": session_id, "namespace": list(op.namespace), "key": op.key,
          "op": "rollback", "value_before": current.get((op.namespace, op.key)),
-         "value_after": op.value, "source": None, "rolled_back_to": target_id, "at": now}
+         "value_after": op.value, "source": None, "rolled_back_to": target_id,
+         "retcon_enabled": bool(store.enabled), "at": now}
         for op in ops])
     return diff
