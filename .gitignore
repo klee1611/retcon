@@ -13,3 +13,10 @@ __pycache__/
 # Tooling
 .pytest_cache/
 .DS_Store
+
+# Web
+web/node_modules
+web/dist
+
+# Browser test artifacts
+.playwright-mcp/
