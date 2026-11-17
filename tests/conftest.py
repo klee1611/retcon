@@ -34,3 +34,12 @@ def sdb(db):
     for name in DATA:
         db[name].delete_many({})
     return db
+
+
+ATLAS_FIXTURES = {"db", "sdb", "store"}
+
+
+def pytest_collection_modifyitems(config, items):
+    for item in items:
+        if ATLAS_FIXTURES & set(item.fixturenames):
+            item.add_marker(pytest.mark.atlas)

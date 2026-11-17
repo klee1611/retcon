@@ -1,0 +1,31 @@
+name: Integration (Atlas)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: integration-atlas
+  cancel-in-progress: false
+
+jobs:
+  atlas-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      MONGODB_URI: ${{ secrets.MONGODB_URI }}
+      RETCON_TEST_DB: retcon_ci_${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - run: uv python install 3.13
+      - run: uv sync --locked
+      - name: Full test suite against Atlas
+        run: uv run pytest -q
