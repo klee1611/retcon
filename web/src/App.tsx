@@ -3,7 +3,8 @@ import { Route, Routes } from "react-router-dom"
 import { Layout } from "@/components/Layout"
 import { Landing } from "@/pages/Landing"
 import { HowItWorks } from "@/pages/HowItWorks"
-import { Eval, NotFound, Play } from "@/pages/Placeholder"
+import { Play } from "@/pages/Play"
+import { Eval, NotFound } from "@/pages/Placeholder"
 
 export default function App() {
   return (
