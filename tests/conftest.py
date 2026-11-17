@@ -1,9 +1,11 @@
+import os
+
 import pytest
 
 from retcon import get_db, make_store, setup
 from retcon.db import COLLECTIONS
 
-TEST_DB = "retcon_test"
+TEST_DB = os.environ.get("RETCON_TEST_DB", "retcon_test")
 SID = "s_alice"
 OTHER = "s_bob"
 DATA = [c for c in COLLECTIONS if c != "attack_patterns"]

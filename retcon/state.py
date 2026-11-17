@@ -1,11 +1,22 @@
 """Build the API's `State` object (docs/06-interfaces.md) for one session."""
+import os
 from datetime import UTC, datetime, timedelta
 
 from retcon.db import SESSION_TTL_SECONDS
 from retcon.store import TRUST_START, TRUSTED_TYPES
 
-LLM_CALLS_LIMIT = 30
 TIMELINE_LIMIT = 100
+LIST_LIMIT = 100
+DEFAULT_SESSION_LLM_CALLS = 30
+PREFERENCES = "preferences"
+
+
+def session_llm_limit() -> int:
+    """Per-session LLM call cap (env SESSION_LLM_CALLS): the single source of truth."""
+    try:
+        return int(os.environ.get("SESSION_LLM_CALLS", DEFAULT_SESSION_LLM_CALLS))
+    except ValueError:
+        return DEFAULT_SESSION_LLM_CALLS
 
 
 def iso(dt: datetime) -> str:
@@ -20,8 +31,15 @@ def _value(v: dict | None) -> dict | None:
     return {"text": v.get("text", ""), "source": v.get("source") or {"type": "unknown", "id": "unknown"}}
 
 
-def is_tainted(source: dict | None) -> bool:
+def is_external(source: dict | None) -> bool:
+    """The source is not the user themself (type not conversation/system)."""
     return (source or {}).get("type") not in TRUSTED_TYPES
+
+
+def is_tainted(source: dict | None, namespace=None) -> bool:
+    """An external source currently owns a memory in the user's preferences namespace."""
+    return (len(namespace or ()) > 1 and tuple(namespace)[1] == PREFERENCES
+            and is_external(source))
 
 
 def action_view(doc: dict) -> dict:
@@ -45,7 +63,8 @@ def session_state(db, session_doc: dict) -> dict:
         t = trust.get(f"{prefix}{src.get('type')}:{src.get('id')}", TRUST_START)
         at = d.get("updated_at") or d.get("created_at") or created
         memories.append({"key": d["key"], "text": v.get("text", ""), "source": src,
-                         "trust": t, "tainted": is_tainted(src), "updated_at": iso(at)})
+                         "trust": t, "external": is_external(src),
+                         "tainted": is_tainted(src, d["namespace"]), "updated_at": iso(at)})
     memories.sort(key=lambda m: m["key"])
 
     timeline = [{
@@ -59,10 +78,10 @@ def session_state(db, session_doc: dict) -> dict:
         "quarantine_id": str(q["_id"]), "at": iso(q["created_at"]), "key": q["key"],
         "text": q["value"].get("text", ""), "source": q["source"], "rule": q["rule"],
         "reason": q["reason"], "status": q["status"],
-    } for q in db["quarantine"].find({"session_id": sid}).sort([("created_at", -1), ("_id", -1)])]
+    } for q in db["quarantine"].find({"session_id": sid}).sort([("created_at", -1), ("_id", -1)]).limit(LIST_LIMIT)]
 
     actions = [action_view(a) for a in db["actions"].find({"session_id": sid})
-               .sort([("created_at", -1), ("_id", -1)])]
+               .sort([("created_at", -1), ("_id", -1)]).limit(LIST_LIMIT)]
 
     sources = []
     for d in db["sources"].find({"session_id": sid}):
@@ -80,7 +99,7 @@ def session_state(db, session_doc: dict) -> dict:
         "created_at": iso(created),
         "expires_at": iso(created + timedelta(seconds=SESSION_TTL_SECONDS)),
         "usage": {"llm_calls_used": session_doc.get("llm_calls_used", 0),
-                  "llm_calls_limit": LLM_CALLS_LIMIT},
+                  "llm_calls_limit": session_llm_limit()},
         "memories": memories, "timeline": timeline, "quarantine": quarantine,
         "actions": actions, "sources": sources,
     }

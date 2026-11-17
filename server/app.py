@@ -84,6 +84,18 @@ async def _llm(_request, exc):
                     retry_after=2).response()
 
 
+@app.exception_handler(agent.SessionQuotaExhausted)
+async def _quota(_request, _exc):
+    return ApiError(429, "session_quota_exhausted",
+                    "This session has used all of its LLM calls.").response()
+
+
+@app.exception_handler(agent.SessionStartError)
+async def _start_failed(_request, exc):
+    log.error("session start failed: %s", exc)
+    return ApiError(500, "internal", "Something went wrong.").response()
+
+
 # ---------- request models ----------
 
 class NewSession(BaseModel):
@@ -224,20 +236,26 @@ def toggle(sid: str, body: Toggle, request: Request):
 def rollback(sid: str, body: Rollback, request: Request):
     _owned(request, sid)
     db = database()
+    if body.preview:  # read-only: never takes the session lock
+        return _rollback(db, sid, body)
     with sessions.session_lock(db, sid):
-        doc = sessions.get_session(db, sid)
-        try:
-            raw = retcon.rollback_to_event(db, _store(doc), body.history_id, sid,
-                                           preview=body.preview)
-        except LookupError:
-            raise ApiError(404, "history_event_not_found",
-                           "That event is not in this session.") from None
-        diff = {"history_id": raw["history_id"]}
-        for kind in ("added", "removed", "changed"):
-            diff[kind] = [{"key": i["key"], "before": _mv(i["before"]), "after": _mv(i["after"])}
-                          for i in raw[kind]]
-        applied = not body.preview and any(diff[k] for k in ("added", "removed", "changed"))
-        return {"diff": diff, "applied": applied, "state": _state(db, sid)}
+        return _rollback(db, sid, body)
+
+
+def _rollback(db, sid: str, body: Rollback) -> dict:
+    doc = sessions.get_session(db, sid)
+    try:
+        raw = retcon.rollback_to_event(db, _store(doc), body.history_id, sid,
+                                       preview=body.preview)
+    except LookupError:
+        raise ApiError(404, "history_event_not_found",
+                       "That event is not in this session.") from None
+    diff = {"history_id": raw["history_id"]}
+    for kind in ("added", "removed", "changed"):
+        diff[kind] = [{"key": i["key"], "before": _mv(i["before"]), "after": _mv(i["after"])}
+                      for i in raw[kind]]
+    applied = not body.preview and any(diff[k] for k in ("added", "removed", "changed"))
+    return {"diff": diff, "applied": applied, "state": _state(db, sid)}
 
 
 def _review(sid: str, qid: str, request: Request, action: str):

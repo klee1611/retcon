@@ -256,6 +256,7 @@ def test_session_quota(api):
 
 def test_ip_rate_limit(api, monkeypatch):
     monkeypatch.setenv("IP_SESSIONS_PER_HOUR", "1")
+    monkeypatch.setenv("TRUST_PROXY_HEADERS", "1")
     h = {**ORIGIN, "x-real-ip": "203.0.113.9"}
     assert post(api, "/api/sessions", {"scenario": "shopping"}, headers=h).status_code == 201
     body = err(post(api, "/api/sessions", {"scenario": "shopping"}, headers=h),
@@ -326,3 +327,41 @@ def test_internal_error_does_not_leak(api, monkeypatch):
     err(r, 500, "internal")
     assert "secret" not in r.text
     assert r.headers["x-content-type-options"] == "nosniff"
+
+
+def test_rollback_preview_ignores_lock_but_apply_locks(api):
+    sid = new_session(api)
+    hid = api.c.get(f"/api/sessions/{sid}").json()["state"]["timeline"][0]["history_id"]
+    future = datetime.now(UTC) + timedelta(seconds=20)
+    api.db["sessions"].update_one({"_id": sid}, {"$set": {"lock_until": future}})
+    r = post(api, f"/api/sessions/{sid}/rollback", {"history_id": hid, "preview": True})
+    assert r.status_code == 200 and r.json()["applied"] is False
+    assert api.db["sessions"].find_one({"_id": sid})["lock_until"] is not None  # untouched
+    err(post(api, f"/api/sessions/{sid}/rollback", {"history_id": hid, "preview": False}),
+        409, "session_busy")
+
+
+def test_atomic_quota_maps_to_429(api, monkeypatch):
+    from server import limits
+    sid = new_session(api)
+    api.db["sessions"].update_one({"_id": sid}, {"$set": {"llm_calls_used": 30}})
+    monkeypatch.setattr(limits, "check_session_quota", lambda doc: None)  # skip the pre-check
+    err(post(api, f"/api/sessions/{sid}/chat", {"message": "hi"}), 429, "session_quota_exhausted")
+    assert api.db["sessions"].find_one({"_id": sid})["llm_calls_used"] == 30
+
+
+def test_duplicate_session_id_is_internal(api, monkeypatch):
+    from server import sessions
+    sid = new_session(api)
+    monkeypatch.setattr(sessions, "new_sid", lambda: sid)
+    c = TestClient(app, base_url=BASE, raise_server_exceptions=False)
+    r = c.post("/api/sessions", json={"scenario": "shopping"}, headers=ORIGIN)
+    err(r, 500, "internal")
+
+
+def test_spoofed_proxy_headers_ignored_unless_trusted(api, monkeypatch):
+    monkeypatch.setenv("IP_SESSIONS_PER_HOUR", "1")
+    monkeypatch.delenv("TRUST_PROXY_HEADERS", raising=False)
+    post(api, "/api/sessions", {"scenario": "shopping"}, headers={**ORIGIN, "x-real-ip": "1.1.1.1"})
+    r = post(api, "/api/sessions", {"scenario": "shopping"}, headers={**ORIGIN, "x-real-ip": "2.2.2.2"})
+    err(r, 429, "ip_rate_limited")  # same client host: spoofing did not buy a new bucket

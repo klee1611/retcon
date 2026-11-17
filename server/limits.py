@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
+from retcon.state import session_llm_limit
 from server.errors import ApiError
 
 
@@ -14,10 +15,6 @@ def _int(name: str, default: int) -> int:
         return int(os.environ.get(name, default))
     except ValueError:
         return default
-
-
-def session_llm_limit() -> int:
-    return _int("SESSION_LLM_CALLS", 30)
 
 
 def max_input_chars() -> int:
@@ -44,13 +41,19 @@ def check_session_quota(session_doc: dict) -> None:
                        "This session has used all of its LLM calls.")
 
 
+def trust_proxy_headers() -> bool:
+    return os.environ.get("TRUST_PROXY_HEADERS", "").strip() == "1"
+
+
 def client_ip(headers, client_host: str | None) -> str:
-    real = headers.get("x-real-ip")
-    if real:
-        return real.strip()
-    fwd = headers.get("x-forwarded-for")
-    if fwd:
-        return fwd.split(",")[0].strip()
+    """Proxy headers are client-controlled unless a trusted proxy overwrites them."""
+    if trust_proxy_headers():
+        real = (headers.get("x-real-ip") or "").strip()
+        if real:
+            return real
+        fwd = (headers.get("x-forwarded-for") or "").split(",")[0].strip()
+        if fwd:
+            return fwd
     return client_host or "unknown"
 
 
