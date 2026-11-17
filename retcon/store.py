@@ -1,10 +1,18 @@
-"""RetconStore: MongoDBStore subclass that checks, quarantines, and records writes."""
+"""RetconStore: MongoDBStore subclass that checks, quarantines, and records writes.
+
+Every memory belongs to one session: the first namespace element is the
+session id. A store bound to a session (``for_session``) can only read and
+write that session's namespaces, and every bookkeeping document it writes
+(history, quarantine, sources) carries ``session_id`` so it can be scoped
+and expired.
+"""
+import copy
 import re
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from langgraph.store.base import PutOp
+from langgraph.store.base import GetOp, Item, ListNamespacesOp, PutOp, SearchOp
 from langgraph.store.mongodb import MongoDBStore
 from pymongo_search_utils.pipeline import autoembedding_vector_search_stage
 
@@ -67,15 +75,43 @@ def _all_text(value: dict) -> str:
 
 
 class RetconStore(MongoDBStore):
-    def __init__(self, collection, *, db, enabled=True, user_id=None, **kwargs):
+    def __init__(self, collection, *, db, enabled=True, session_id=None, **kwargs):
         super().__init__(collection, **kwargs)
         self.db = db
         self.enabled = enabled
-        self.user_id = user_id
+        self.session_id = session_id
+
+    def for_session(self, session_id: str, *, enabled: bool) -> "RetconStore":
+        """A cheap view of this store bound to one session.
+
+        MongoDBStore.__init__ makes several round trips (index checks), so a
+        process builds one base store and hands out shallow copies per request.
+        """
+        if self.session_id is not None:
+            raise PermissionError("store is already bound to a session")
+        if not isinstance(session_id, str) or not _KEY_RE.fullmatch(session_id):
+            raise ValueError("session_id must match [A-Za-z0-9_-]{1,64}")
+        view = copy.copy(self)
+        view.session_id = session_id
+        view.enabled = enabled
+        return view
+
+    # ---- session scoping ---------------------------------------------
+    def _in_session(self, namespace) -> bool:
+        return self.session_id is None or (
+            bool(namespace) and namespace[0] == self.session_id)
+
+    def _sid(self, namespace) -> str | None:
+        return self.session_id or (namespace[0] if namespace else None)
+
+    def _source_ids(self, source: dict) -> list[str]:
+        """Trust is tracked per session, so one visitor can't poison another's."""
+        prefix = f"{self.session_id}|" if self.session_id else ""
+        return [prefix + source_key(source), prefix + type_key(source)]
 
     # ---- checks -------------------------------------------------------
     def trust(self, source: dict) -> int:
-        ids = [source_key(source), type_key(source)]
+        ids = self._source_ids(source)
         found = {d["_id"]: d["trust"]
                  for d in self.db["sources"].find({"_id": {"$in": ids}})}
         return min(found.get(i, TRUST_START) for i in ids)
@@ -93,7 +129,7 @@ class RetconStore(MongoDBStore):
         """Run one attack-pattern query so the first real check isn't cold."""
         try:
             self.best_attack_score("warm up")
-        except Exception:
+        except Exception:  # noqa: BLE001, S110 - warm-up is best effort
             pass
 
     def _check(self, namespace, key, value) -> Decision:
@@ -119,12 +155,12 @@ class RetconStore(MongoDBStore):
                 return Decision(False, "invalid_input",
                                 "namespace must be non-empty, source a dict, "
                                 "and value must have a string 'text'")
-            if not isinstance(key, str) or not _KEY_RE.match(key):
+            if not isinstance(key, str) or not _KEY_RE.fullmatch(key):
                 return Decision(False, "invalid_input",
                                 "key must match [A-Za-z0-9_-]{1,64}")
             return _pool.submit(self._check, tuple(namespace), key, value).result(
                 timeout=CHECK_TIMEOUT)
-        except BaseException as e:  # timeout or any error -> fail closed
+        except BaseException as e:  # noqa: BLE001 - timeout or any error -> fail closed
             return Decision(False, "fail_closed", f"check failed: {type(e).__name__}")
 
     # ---- bookkeeping --------------------------------------------------
@@ -134,18 +170,21 @@ class RetconStore(MongoDBStore):
         return doc["value"] if doc else None
 
     def _history(self, namespace, key, op, before, after, source):
-        self.db["memory_history"].insert_one({
+        return self.db["memory_history"].insert_one({
+            "session_id": self._sid(namespace),
             "namespace": list(namespace), "key": key, "op": op,
             "value_before": before, "value_after": after,
             "source": source, "at": _now(),
-        })
+        }).inserted_id
 
     def _update_source(self, source: dict, blocked: bool) -> None:
         """Atomically update trust for the source id and the per-type aggregate."""
         delta = -TRUST_BLOCK_PENALTY if blocked else 1
-        for k in (source_key(source), type_key(source)):
+        for k in self._source_ids(source):
             self.db["sources"].update_one({"_id": k}, [{"$set": {
+                "session_id": self.session_id,
                 "type": source.get("type"),
+                "created_at": {"$ifNull": ["$created_at", "$$NOW"]},
                 "trust": {"$min": [100, {"$max": [0, {"$add": [
                     {"$ifNull": ["$trust", TRUST_START]}, delta]}]}]},
                 "blocked": {"$add": [{"$ifNull": ["$blocked", 0]}, 1 if blocked else 0]},
@@ -156,6 +195,9 @@ class RetconStore(MongoDBStore):
     # ---- write path ---------------------------------------------------
     def batch(self, ops):
         ops = list(ops)
+        for op in ops:  # all-or-nothing scope check, before any side effect
+            if isinstance(op, PutOp) and not self._in_session(op.namespace):
+                raise PermissionError("namespace is outside this session")
         kept, keep_flags, pending = [], [], []  # pending: history rows, written after the write
         for op in ops:
             if not isinstance(op, PutOp):
@@ -183,10 +225,7 @@ class RetconStore(MongoDBStore):
                 else:
                     d = self.check(op.namespace, op.key, value)
                 if not d.allowed:
-                    self.db["quarantine"].insert_one({
-                        "namespace": list(op.namespace), "key": op.key,
-                        "value": value, "source": source, "reason": d.reason,
-                        "rule": d.rule, "created_at": _now(), "status": "held"})
+                    self._quarantine(op, value, source, d)
                     if d.rule != "fail_closed":  # infra failures don't punish the source
                         self._update_source(source, blocked=True)
                     keep_flags.append(False)
@@ -196,10 +235,28 @@ class RetconStore(MongoDBStore):
                             self._current(op.namespace, op.key), value, source))
             kept.append(op); keep_flags.append(True)
         inner = iter(super().batch(kept))
-        results = [next(inner) if keep else None for keep in keep_flags]
+        results = [self._filter_result(op, next(inner)) if keep else None
+                   for op, keep in zip(ops, keep_flags)]
         for row in pending:
             self._history(*row)
         return results
+
+    def _quarantine(self, op, value, source, d: Decision) -> None:
+        self.db["quarantine"].insert_one({
+            "session_id": self._sid(op.namespace),
+            "namespace": list(op.namespace), "key": op.key,
+            "value": value, "source": source, "reason": d.reason,
+            "rule": d.rule, "created_at": _now(), "status": "held"})
+
+    def _filter_result(self, op, result):
+        """Apply the read rules to GetOp/SearchOp results that came through batch()."""
+        if isinstance(op, GetOp):
+            return result if self._visible_item(result) else None
+        if isinstance(op, SearchOp):
+            return [i for i in result if self._visible_item(i)]
+        if isinstance(op, ListNamespacesOp):
+            return [ns for ns in result if self._in_session(ns)]
+        return result
 
     # abatch is inherited: it runs self.batch in an executor.
 
@@ -213,6 +270,8 @@ class RetconStore(MongoDBStore):
         Returns False if there was nothing to forget. Only the memory's own
         namespace owner should call this (enforced by the agent's tool).
         """
+        if not self._in_session(namespace):
+            return False
         before = self._current(namespace, key)
         if before is None:
             return False
@@ -222,20 +281,38 @@ class RetconStore(MongoDBStore):
 
     def raw_batch(self, ops):
         """Underlying MongoDBStore write with no checks or history (used by rollback)."""
+        ops = list(ops)
+        if not all(self._in_session(op.namespace) for op in ops):
+            raise PermissionError("namespace is outside this session")
         return super().batch(ops)
 
     # ---- read path ----------------------------------------------------
-    def _visible(self, value) -> bool:
+    def _visible_item(self, item: Item | None) -> bool:
+        if item is None or not self._in_session(item.namespace):
+            return False
+        value = item.value
         if value.get("status", "active") != "active":
             return False
-        return self.user_id is None or self.user_id in value.get("readable_by", [])
+        return self.session_id is None or self.session_id in value.get("readable_by", [])
 
     def get(self, namespace, key, **kwargs):
+        if not self._in_session(namespace):
+            return None
         item = super().get(namespace, key, **kwargs)
-        return item if item is not None and self._visible(item.value) else None
+        return item if self._visible_item(item) else None
+
+    def list_namespaces(self, *, prefix=None, **kwargs):
+        if self.session_id is not None:
+            if prefix is None:
+                prefix = (self.session_id,)
+            elif not self._in_session(prefix):  # also rejects a "*" wildcard first element
+                return []
+        return super().list_namespaces(prefix=prefix, **kwargs)
 
     def search(self, namespace_prefix, /, *, limit=10, **kwargs):
+        if not self._in_session(namespace_prefix):
+            return []  # includes the empty prefix, which would span every session
         items = super().search(namespace_prefix, limit=limit * 5 if limit else limit,
                                **kwargs)
-        items = [i for i in items if self._visible(i.value)]
+        items = [i for i in items if self._visible_item(i)]
         return items[:limit] if limit else items

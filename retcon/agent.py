@@ -1,6 +1,6 @@
 """Retcon demo agent: one Groq LLM call plus tool execution."""
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from dotenv import load_dotenv
 
@@ -49,7 +49,7 @@ def _execute_refund(user_id: str, run_label: str, args: dict) -> str:
         "account": str(args.get("account", "")),
         "user_id": user_id,
         "run_label": run_label,
-        "at": datetime.now(timezone.utc),
+        "at": datetime.now(UTC),
     }
     _get_db()["refunds"].insert_one(doc)
     return f"Refund issued for order {doc['order_id']} to {doc['account']}."

@@ -1,15 +1,18 @@
 import pytest
 
 from retcon import get_db, make_store, setup
+from retcon.db import COLLECTIONS
 
 TEST_DB = "retcon_test"
+SID = "s_alice"
+OTHER = "s_bob"
+DATA = [c for c in COLLECTIONS if c != "attack_patterns"]
 
 
 @pytest.fixture(scope="session")
 def db():
     d = get_db(TEST_DB)
     setup(d, reset=True)
-    make_store(d)  # builds the memories vector index once
     yield d
     # dropDatabase is not permitted for this user: drop collections one by one
     for name in d.list_collection_names():
@@ -18,6 +21,6 @@ def db():
 
 @pytest.fixture
 def store(db):
-    for name in ("memories", "quarantine", "memory_history", "sources"):
+    for name in DATA:
         db[name].delete_many({})
-    return make_store(db, enabled=True, user_id="user_42")
+    return make_store(db, session_id=SID, enabled=True)
