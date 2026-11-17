@@ -30,7 +30,13 @@ export function MemoryPanel({ memories, usedKeys, turn }: { memories: Memory[]; 
               >
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-mono text-xs font-semibold">{m.key}</span>
-                  {m.tainted ? <Badge tone="danger">tainted</Badge> : null}
+                  {m.tainted ? (
+                    <Badge tone="danger" title="An outside source changed your setting">
+                      tainted
+                    </Badge>
+                  ) : m.external ? (
+                    <Badge title="This came from an outside source, not from you">external</Badge>
+                  ) : null}
                   {used ? <Badge tone="accent">used in last reply</Badge> : null}
                 </div>
                 <p className="mt-1 break-words">{m.text}</p>

@@ -123,13 +123,25 @@ export function ConversationPanel({
                             title={`${u.text} (source: ${sourceLabel(u.source)})`}
                             className={cn(
                               "inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-0.5 text-xs",
-                              u.tainted ? "border-danger/50 bg-danger/10 text-danger" : "bg-background",
+                              u.tainted
+                                ? "border-danger/50 bg-danger/10 text-danger"
+                                : u.external
+                                  ? "bg-muted text-muted-foreground"
+                                  : "bg-background",
                             )}
                           >
                             <span className="truncate">
                               {u.key}: {u.text}
                             </span>
-                            {u.tainted ? <span className="shrink-0 font-semibold">tainted</span> : null}
+                            {u.tainted ? (
+                              <span className="shrink-0 font-semibold" title="An outside source changed your setting">
+                                tainted
+                              </span>
+                            ) : u.external ? (
+                              <span className="shrink-0 font-semibold" title="This came from an outside source, not from you">
+                                external
+                              </span>
+                            ) : null}
                           </span>
                         </li>
                       ))}

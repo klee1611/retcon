@@ -8,6 +8,9 @@ export type Memory = {
   text: string
   source: Source
   trust: number
+  /** Source is not the user. */
+  external: boolean
+  /** An external source overwrote one of the user's own settings. */
   tainted: boolean
   updated_at: string
 }
@@ -84,7 +87,7 @@ export type Scenario = {
   chat_suggestions: string[]
 }
 
-export type MemoryUsed = { key: string; text: string; source: Source; tainted: boolean }
+export type MemoryUsed = { key: string; text: string; source: Source; external: boolean; tainted: boolean }
 
 export type ChatResponse = {
   turn: { reply: string; memories_used: MemoryUsed[]; actions: Action[] }

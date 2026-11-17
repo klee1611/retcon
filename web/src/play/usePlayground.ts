@@ -153,6 +153,7 @@ export function usePlayground(scenarioId: string) {
   const [ps, dispatch] = useReducer(reducer, initial)
   const backendRef = useRef<Backend | null>(override)
   const runId = useRef(0)
+  const previews = useRef(new Map<string, Promise<{ ok: true; diff: RollbackResponse["diff"] } | { ok: false; message: string }>>())
 
   const start = useCallback(
     async (fresh: boolean) => {
@@ -249,10 +250,17 @@ export function usePlayground(scenarioId: string) {
 
   const previewRollback = useCallback(
     async (historyId: string): Promise<{ ok: true; diff: RollbackResponse["diff"] } | { ok: false; message: string }> => {
-      const r = await guard("rollback", (b, id) => b.rollback(id, historyId, true))
-      if (!r.ok) return r
-      dispatch({ type: "state", state: r.value.state })
-      return { ok: true, diff: r.value.diff }
+      // One preview request per history event at a time: duplicates (StrictMode, re-opens) share it.
+      const known = previews.current.get(historyId)
+      if (known) return known
+      const p = (async () => {
+        const r = await guard("rollback", (b, id) => b.rollback(id, historyId, true))
+        if (!r.ok) return r
+        dispatch({ type: "state", state: r.value.state })
+        return { ok: true as const, diff: r.value.diff }
+      })().finally(() => previews.current.delete(historyId))
+      previews.current.set(historyId, p)
+      return p
     },
     [guard],
   )

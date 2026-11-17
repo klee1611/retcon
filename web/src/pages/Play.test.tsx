@@ -1,3 +1,4 @@
+import { StrictMode } from "react"
 import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { MemoryRouter, Route, Routes } from "react-router-dom"
@@ -23,10 +24,10 @@ function setViewport(desktop: boolean) {
   })) as typeof window.matchMedia
 }
 
-async function setup(path = "/play/shopping") {
+async function setup(path = "/play/shopping", strict = false) {
   const backend: MockBackend = createMockBackend({ latencyMs: 0 })
   const user = userEvent.setup()
-  render(
+  const tree = (
     <BackendContext.Provider value={backend}>
       <MemoryRouter initialEntries={[path]}>
         <Routes>
@@ -34,8 +35,9 @@ async function setup(path = "/play/shopping") {
           <Route path="/play/:scenario" element={<Play />} />
         </Routes>
       </MemoryRouter>
-    </BackendContext.Provider>,
+    </BackendContext.Provider>
   )
+  render(strict ? <StrictMode>{tree}</StrictMode> : tree)
   if (path.endsWith("shopping")) await screen.findByRole("switch", { name: "Retcon firewall" })
   return { user, backend }
 }
@@ -114,6 +116,35 @@ describe("playground flow (desktop)", () => {
     await user.click(await screen.findByRole("button", { name: /release refund_method/i }))
     await waitFor(() => expect(screen.getAllByText("Released").length).toBeGreaterThan(0))
     expect(backend.peek()!.memories.find((m) => m.key === "refund_method")!.tainted).toBe(true)
+  })
+
+  it("shows a neutral external badge for a normal review and tainted only for an overwrite", async () => {
+    const { user } = await setup()
+    await readPreset(user, "Normal review")
+    expect(await screen.findByText("Stored")).toBeInTheDocument()
+    const memory = screen.getByRole("heading", { name: "Memory" }).closest("section")!
+    expect(within(memory).getByText("external")).toBeInTheDocument()
+    expect(within(memory).queryByText("tainted")).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole("switch", { name: "Retcon firewall" }))
+    await waitFor(() => expect(screen.getByText("Retcon OFF")).toBeInTheDocument())
+    await readPreset(user, "Obvious injection")
+    expect(await within(memory).findByText("tainted")).toHaveAttribute("title", "An outside source changed your setting")
+    expect(within(memory).getAllByText("external")).toHaveLength(1)
+  })
+
+  it("rollback preview under StrictMode sends one request and shows no error", async () => {
+    const { user, backend } = await setup("/play/shopping", true)
+    await user.click(screen.getByRole("switch", { name: "Retcon firewall" }))
+    await waitFor(() => expect(screen.getByText("Retcon OFF")).toBeInTheDocument())
+    await readPreset(user, "Obvious injection")
+    await screen.findByText("Stored")
+    await user.click(screen.getAllByRole("button", { name: /roll back to before this/i })[0])
+    const dialog = await screen.findByRole("dialog")
+    expect(await within(dialog).findByText("Changed")).toBeInTheDocument()
+    expect(within(dialog).queryByRole("alert")).not.toBeInTheDocument()
+    expect(screen.queryByText(/still running/i)).not.toBeInTheDocument()
+    expect(backend.calls.filter((c) => c.name === "rollback" && c.args[2] === true)).toHaveLength(1)
   })
 
   it("enforces the 2,000 character limit with a counter", async () => {

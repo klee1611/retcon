@@ -7,13 +7,16 @@ export function Badge({
   tone = "neutral",
   children,
   className,
+  title,
 }: {
+  title?: string
   tone?: "neutral" | "danger" | "success" | "accent"
   children: ReactNode
   className?: string
 }) {
   return (
     <span
+      title={title}
       className={cn(
         "inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium",
         tone === "neutral" && "bg-muted text-muted-foreground",

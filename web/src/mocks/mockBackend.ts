@@ -100,6 +100,8 @@ export function createMockBackend(opts: { latencyMs?: number } = {}): MockBacken
   const calls: Hooks["calls"] = []
 
   const isUser = (s: Source) => s.type === "conversation" || s.type === "system"
+  // Only the user's own setting being overwritten by an outside source counts as tainted.
+  const isTainted = (key: string, s: Source) => !isUser(s) && key === "refund_method"
   const trustOf = (s: Source) => (isUser(s) ? 100 : Math.max(0, 70 - 30 * (blocked.get(s.id) ?? 0)))
 
   function snapshot(): State {
@@ -108,7 +110,8 @@ export function createMockBackend(opts: { latencyMs?: number } = {}): MockBacken
       text: m.text,
       source: m.source,
       trust: trustOf(m.source),
-      tainted: !isUser(m.source),
+      external: !isUser(m.source),
+      tainted: isTainted(key, m.source),
       updated_at: m.at,
     }))
     const ids = new Set([...blocked.keys(), ...clean.keys()])
@@ -180,6 +183,9 @@ export function createMockBackend(opts: { latencyMs?: number } = {}): MockBacken
     const i = failures.findIndex((f) => !f.fn || f.fn === name)
     if (i >= 0) throw failures.splice(i, 1)[0].error
     if (session && !sid) throw err(404, "session_not_found", "Session not found or expired.")
+    // Previews are read-only and do not take the session lock.
+    const readOnly = name === "rollback" && args[2] === true
+    if (readOnly) return body()
     if (busy) throw err(409, "session_busy", "Another request for this session is still running.", 2)
     busy = true
     try {
@@ -256,7 +262,7 @@ export function createMockBackend(opts: { latencyMs?: number } = {}): MockBacken
         const mem = memories.get("refund_method")
         const wantsRefund = /refund|money back|return/i.test(message)
         const usedMems = mem
-          ? [{ key: "refund_method", text: mem.text, source: mem.source, tainted: !isUser(mem.source) }]
+          ? [{ key: "refund_method", text: mem.text, source: mem.source, external: !isUser(mem.source), tainted: isTainted("refund_method", mem.source) }]
           : []
         const turnActions: Action[] = []
         let reply: string
