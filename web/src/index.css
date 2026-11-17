@@ -69,6 +69,37 @@
   }
   .memory-used { animation: memory-flash 2.5s ease-out both; }
   .story-step { animation: story-in 0.5s ease-out both; }
+  /* Guided tour: the root carries the current targets, so highlighting is pure CSS and never blocks clicks. */
+  [data-tour-targets~="switch"] [data-tour-target="switch"],
+  [data-tour-targets~="ext-text"] [data-tour-target="ext-text"],
+  [data-tour-targets~="ext-submit"] [data-tour-target="ext-submit"],
+  [data-tour-targets~="refund-chip"] [data-tour-target="refund-chip"],
+  [data-tour-targets~="hijacked"] [data-tour-target="hijacked"],
+  [data-tour-targets~="poison"] [data-tour-target="poison"],
+  [data-tour-targets~="rollback-btn"] [data-tour-target="rollback-btn"],
+  [data-tour-targets~="quarantine"] [data-tour-target="quarantine"] {
+    outline: 3px solid hsl(var(--primary));
+    outline-offset: 3px;
+    border-radius: var(--radius);
+    scroll-margin: 6rem 0 14rem;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    @keyframes tour-pulse {
+      from { outline-color: hsl(var(--primary)); }
+      50% { outline-color: hsl(var(--primary) / 0.35); }
+      to { outline-color: hsl(var(--primary)); }
+    }
+    [data-tour-targets~="switch"] [data-tour-target="switch"],
+  [data-tour-targets~="ext-text"] [data-tour-target="ext-text"],
+  [data-tour-targets~="ext-submit"] [data-tour-target="ext-submit"],
+  [data-tour-targets~="refund-chip"] [data-tour-target="refund-chip"],
+  [data-tour-targets~="hijacked"] [data-tour-target="hijacked"],
+  [data-tour-targets~="poison"] [data-tour-target="poison"],
+  [data-tour-targets~="rollback-btn"] [data-tour-target="rollback-btn"],
+  [data-tour-targets~="quarantine"] [data-tour-target="quarantine"] {
+      animation: tour-pulse 1.6s ease-in-out infinite;
+    }
+  }
   @media (prefers-reduced-motion: reduce) {
     @keyframes memory-flash {
     from { background-color: hsl(var(--primary) / 0.22); box-shadow: 0 0 0 2px hsl(var(--primary)); }

@@ -1,4 +1,4 @@
-import { RotateCcw } from "lucide-react"
+import { Compass, RotateCcw } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import type { State } from "@/lib/api"
@@ -10,9 +10,11 @@ type Props = {
   busy: boolean
   onToggle: (enabled: boolean) => void
   onRestart: () => void
+  /** Shown only when a tour exists for this scenario. */
+  onTour?: () => void
 }
 
-export function PlayHeader({ name, state, busy, onToggle, onRestart }: Props) {
+export function PlayHeader({ name, state, busy, onToggle, onRestart, onTour }: Props) {
   const on = state.retcon_enabled
   const { llm_calls_used: used, llm_calls_limit: limit } = state.usage
   return (
@@ -24,6 +26,7 @@ export function PlayHeader({ name, state, busy, onToggle, onRestart }: Props) {
           role="switch"
           aria-checked={on}
           aria-label="Retcon firewall"
+          data-tour-target="switch"
           disabled={busy}
           onClick={() => onToggle(!on)}
           className={cn(
@@ -53,6 +56,12 @@ export function PlayHeader({ name, state, busy, onToggle, onRestart }: Props) {
           </span>{" "}
           AI calls
         </p>
+        {onTour ? (
+          <Button variant="outline" size="sm" onClick={onTour}>
+            <Compass aria-hidden="true" />
+            Tour
+          </Button>
+        ) : null}
         <Button variant="outline" size="sm" onClick={onRestart} disabled={busy}>
           <RotateCcw aria-hidden="true" />
           Restart

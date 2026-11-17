@@ -76,6 +76,8 @@ export function ConversationPanel({
     void onIngest(drafts.kind, drafts.external)
   }
 
+  const refundIdx = scenario.chat_suggestions.findIndex((s) => /refund/i.test(s))
+
   const presetsByCat = CATEGORY_ORDER.map((c) => ({
     category: c,
     items: scenario.presets.filter((p) => p.category === c && p.kind === drafts.kind),
@@ -175,12 +177,13 @@ export function ConversationPanel({
 
         {scenario.chat_suggestions.length > 0 ? (
           <ul className="flex flex-wrap gap-2" aria-label="Suggested messages">
-            {scenario.chat_suggestions.map((s) => (
+            {scenario.chat_suggestions.map((s, i) => (
               <li key={s}>
                 <button
                   type="button"
                   disabled={busy}
                   onClick={() => void submitChat(s)}
+                  data-tour-target={i === refundIdx ? "refund-chip" : undefined}
                   className="rounded-full border px-3 py-1 text-left text-xs transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
                 >
                   {s}
@@ -288,12 +291,13 @@ export function ConversationPanel({
               maxLength={MAX_CHARS}
               rows={5}
               disabled={busy}
+              data-tour-target="ext-text"
               aria-describedby="ext-count"
               placeholder="Write your own, or pick an example above"
               className="w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
             />
           </div>
-          <Button type="submit" disabled={busy || !drafts.external.trim()} className="w-full sm:w-auto">
+          <Button type="submit" data-tour-target="ext-submit" disabled={busy || !drafts.external.trim()} className="w-full sm:w-auto">
             Let the assistant read it
           </Button>
         </form>

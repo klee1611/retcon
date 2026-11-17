@@ -2,6 +2,7 @@ import { Undo2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import type { State, TimelineEvent } from "@/lib/api"
+import { findHijackedAction, findPoisonEvent } from "./tour"
 import { ActionLine, Badge, Empty, MemoryText, SectionTitle, TrustBar, formatTime, sourceLabel } from "./ui"
 
 type Props = {
@@ -20,6 +21,8 @@ const OP_LABEL: Record<TimelineEvent["op"], string> = {
 }
 
 export function ActivityPanel({ state, busy, onRollback, onQuarantine }: Props) {
+  const poisonId = findPoisonEvent(state.timeline)?.history_id
+  const hijackedId = findHijackedAction(state.actions)?.action_id
   return (
     <div className="space-y-6">
       <h2 className="text-sm font-semibold">Activity</h2>
@@ -30,7 +33,11 @@ export function ActivityPanel({ state, busy, onRollback, onQuarantine }: Props) 
         ) : (
           <ol className="space-y-2">
             {state.timeline.map((e) => (
-              <li key={e.history_id} className="rounded-lg border bg-card p-3 text-sm">
+              <li
+                key={e.history_id}
+                data-tour-target={e.history_id === poisonId ? "poison" : undefined}
+                className="rounded-lg border bg-card p-3 text-sm"
+              >
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge tone={e.op === "rollback" ? "accent" : "neutral"}>{OP_LABEL[e.op]}</Badge>
                   <span className="font-mono text-xs font-semibold">{e.key}</span>
@@ -54,6 +61,7 @@ export function ActivityPanel({ state, busy, onRollback, onQuarantine }: Props) 
                     variant="outline"
                     size="sm"
                     disabled={busy}
+                    data-tour-target={e.history_id === poisonId ? "rollback-btn" : undefined}
                     onClick={() => onRollback(e)}
                     aria-label={`Roll back to before this: ${OP_LABEL[e.op]} ${e.key}`}
                   >
@@ -67,7 +75,7 @@ export function ActivityPanel({ state, busy, onRollback, onQuarantine }: Props) 
         )}
       </section>
 
-      <section aria-label="Quarantine">
+      <section aria-label="Quarantine" data-tour-target="quarantine">
         <SectionTitle count={state.quarantine.length}>Quarantine</SectionTitle>
         {state.quarantine.length === 0 ? (
           <Empty>Nothing held. With Retcon on, suspicious memory writes wait here for your decision.</Empty>
@@ -121,7 +129,7 @@ export function ActivityPanel({ state, busy, onRollback, onQuarantine }: Props) 
         ) : (
           <ul className="space-y-2">
             {state.actions.map((a) => (
-              <li key={a.action_id}>
+              <li key={a.action_id} data-tour-target={a.action_id === hijackedId ? "hijacked" : undefined}>
                 <ActionLine action={a} />
                 <p className="mt-1 text-xs text-muted-foreground">
                   {formatTime(a.at)}. Retcon was {a.retcon_enabled ? "on" : "off"}.

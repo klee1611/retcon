@@ -4,8 +4,21 @@ import { cn } from "@/lib/utils"
 
 export type TabDef = { id: string; label: string; content: ReactNode }
 
-export function Tabs({ tabs, label }: { tabs: TabDef[]; label: string }) {
-  const [active, setActive] = useState(tabs[0].id)
+type TabsProps = {
+  tabs: TabDef[]
+  label: string
+  /** Controlled mode: the parent owns the active tab. */
+  value?: string
+  onValueChange?: (id: string) => void
+}
+
+export function Tabs({ tabs, label, value, onValueChange }: TabsProps) {
+  const [own, setOwn] = useState(tabs[0].id)
+  const active = value ?? own
+  const setActive = (id: string) => {
+    setOwn(id)
+    onValueChange?.(id)
+  }
   const base = useId()
   const refs = useRef<Record<string, HTMLButtonElement | null>>({})
 

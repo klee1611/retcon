@@ -11,7 +11,10 @@ import { PlayHeader } from "@/play/PlayHeader"
 import { RollbackDialog } from "@/play/RollbackDialog"
 import type { EndedReason } from "@/play/errors"
 import { useMediaQuery } from "@/play/useMediaQuery"
+import { TourCard, TourPrompt } from "@/play/TourCard"
+import { TOUR_STEPS } from "@/play/tour"
 import { usePlayground } from "@/play/usePlayground"
+import { useTour } from "@/play/useTour"
 
 const ENDED: Record<EndedReason, { title: string; body: string }> = {
   quota: {
@@ -47,6 +50,25 @@ export function Play() {
   const [kind, setKind] = useState("")
   const [external, setExternal] = useState("")
   const [rollbackEvent, setRollbackEvent] = useState<TimelineEvent | null>(null)
+  const [tab, setTab] = useState("conversation")
+  const hasTour = ps.scenario?.id === "shopping"
+  const { tour, start: startTour, close: closeTour } = useTour(ps.state, hasTour)
+
+  // When the tour moves to a step, show the tab that holds its target and pre-fill its example.
+  const [seenStep, setSeenStep] = useState(-1)
+  const stepNow = tour.status === "active" ? tour.step : -1
+  if (seenStep !== stepNow) {
+    setSeenStep(stepNow)
+    const def = TOUR_STEPS[stepNow]
+    if (def?.tab) setTab(def.tab)
+    if (def?.prefill && ps.scenario) {
+      const preset = ps.scenario.presets.find((p) => p.category === "attack_obvious")
+      if (preset) {
+        setKind(preset.kind)
+        setExternal(preset.text)
+      }
+    }
+  }
 
   if (ps.phase === "loading") {
     return (
@@ -109,13 +131,15 @@ export function Play() {
   )
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-tour-targets={tour.status === "active" ? TOUR_STEPS[tour.step].targets.join(" ") : undefined}>
+      {tour.status === "prompt" ? <TourPrompt onStart={startTour} onDismiss={closeTour} /> : null}
       <PlayHeader
         name={scenario.name}
         state={state}
         busy={busy}
         onToggle={(v) => void pg.setRetcon(v)}
         onRestart={() => void pg.restart()}
+        onTour={hasTour ? startTour : undefined}
       />
       {ps.banner ? (
         <div
@@ -141,6 +165,8 @@ export function Play() {
       ) : (
         <Tabs
           label="Playground views"
+          value={tab}
+          onValueChange={setTab}
           tabs={[
             { id: "conversation", label: "Conversation", content: conversation },
             { id: "memory", label: "Memory", content: memory },
@@ -148,6 +174,7 @@ export function Play() {
           ]}
         />
       )}
+      {tour.status === "active" ? <TourCard step={tour.step} desktop={desktop} onSkip={closeTour} /> : null}
       {rollbackEvent ? (
         <RollbackDialog
           event={rollbackEvent}
