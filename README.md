@@ -2,13 +2,13 @@
 
 **A memory firewall and undo button for AI agents, built on LangGraph and MongoDB Atlas.**
 
-[![CI](https://github.com/klee1611/retcon/actions/workflows/ci.yml/badge.svg?branch=v2)](https://github.com/klee1611/retcon/actions/workflows/ci.yml)
+[![CI](https://github.com/klee1611/retcon/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/klee1611/retcon/actions/workflows/ci.yml)
 
 > **Live demo:** coming soon. Until then, [run it locally](#run-it-locally) in a few minutes, or use the mock mode that needs no keys at all.
 
 ![The Retcon playground with the firewall off: a product review rewrote the customer's refund preference, the assistant refunded order #A100 to the attacker's account, and the timeline offers "Roll back to before this"](assets/playground.png)
 
-Started at *Agents in Context Toronto*, a MongoDB hackathon (Nov 14, 2026), for Problem Statement 2: "Memory you can govern". This branch is the rebuild that came after it, a playground anyone can try in a browser. The original hackathon submission is tagged [`hackathon-2026-11-14`](https://github.com/klee1611/retcon/tree/hackathon-2026-11-14).
+Started at *Agents in Context Toronto*, a MongoDB hackathon (Nov 14, 2026), for Problem Statement 2: "Memory you can govern". This is the rebuild that came after it: a playground anyone can try in a browser. The original hackathon submission is tagged [`hackathon-2026-11-14`](https://github.com/klee1611/retcon/tree/hackathon-2026-11-14).
 
 ---
 

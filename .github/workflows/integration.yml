@@ -20,12 +20,26 @@ jobs:
       MONGODB_URI: ${{ secrets.MONGODB_URI }}
       RETCON_TEST_DB: retcon_ci_${{ github.run_id }}
     steps:
+      - name: Skip when the MONGODB_URI secret is not set
+        id: gate
+        run: |
+          if [ -z "$MONGODB_URI" ]; then
+            echo "::notice::MONGODB_URI secret is not set; skipping Atlas integration tests."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/checkout@v4
+        if: steps.gate.outputs.run == 'true'
       - uses: astral-sh/setup-uv@v6
+        if: steps.gate.outputs.run == 'true'
         with:
           enable-cache: true
           cache-dependency-glob: uv.lock
-      - run: uv python install 3.13
-      - run: uv sync --locked
+      - if: steps.gate.outputs.run == 'true'
+        run: uv python install 3.13
+      - if: steps.gate.outputs.run == 'true'
+        run: uv sync --locked
       - name: Full test suite against Atlas
+        if: steps.gate.outputs.run == 'true'
         run: uv run pytest -q
